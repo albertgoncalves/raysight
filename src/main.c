@@ -16,6 +16,16 @@ typedef struct {
     Vector2* buffer;
 } Rays;
 
+typedef struct {
+    i32 x[2];
+    i32 y;
+} Horizontal;
+
+typedef struct {
+    i32 x;
+    i32 y[2];
+} Vertical;
+
 #define FPS_X 10
 #define FPS_Y FPS_X
 
@@ -25,19 +35,53 @@ typedef struct {
 #define PLAYER_X 20
 #define PLAYER_Y 30
 
-#define RUN      6.5f
+#define RUN      4.0f
 #define FRICTION 0.75f
 
 #define FOV 0.5f
 
 #define EPSILON 0.00001f
 
-static Rectangle RECTS[] = {
-    {100.0f, 200.0f, 500.0f, 25.0f},
-    {150.0f, 500.0f, 425.0f, 15.0f},
-    {1250.0f, 150.0f, 15.0f, 425.0f},
-};
-#define LEN_RECTS (sizeof(RECTS) / sizeof(RECTS[0]))
+#define WALL_DISTANCE 250
+#define WALL_WIDTH    10
+
+#define DOOR_GAP 150
+
+#define CAP_RECTS (1 << 8)
+static Rectangle RECTS[CAP_RECTS];
+static u32       LEN_RECTS = 0;
+
+#define CAP_HORIZONTALS (1 << 8)
+static Horizontal HORIZONTALS[CAP_HORIZONTALS];
+static u32        LEN_HORIZONTALS = 0;
+
+#define CAP_VERTICALS (1 << 8)
+static Vertical VERTICALS[CAP_VERTICALS];
+static u32      LEN_VERTICALS = 0;
+
+#define CAP_SPLITS (1 << 8)
+static i32 SPLITS[CAP_SPLITS];
+static u32 LEN_SPLITS = 0;
+
+static void rects_push(const Rectangle rectangle) {
+    assert(LEN_RECTS < CAP_RECTS);
+    RECTS[LEN_RECTS++] = rectangle;
+}
+
+static void horizontals_push(const Horizontal horizontal) {
+    assert(LEN_HORIZONTALS < CAP_HORIZONTALS);
+    HORIZONTALS[LEN_HORIZONTALS++] = horizontal;
+}
+
+static void verticals_push(const Vertical vertical) {
+    assert(LEN_VERTICALS < CAP_VERTICALS);
+    VERTICALS[LEN_VERTICALS++] = vertical;
+}
+
+static void splits_push(const i32 split) {
+    assert(LEN_SPLITS < CAP_SPLITS);
+    SPLITS[LEN_SPLITS++] = split;
+}
 
 static Rays rays_new(void) {
     const u32 cap = (1u << 5u);
@@ -53,6 +97,126 @@ static void rays_push(Rays* rays, const Vector2 ray) {
     }
 
     rays->buffer[(rays->len)++] = ray;
+}
+
+static void generate_horizontal(const i32, const i32, const i32, const i32);
+
+static void generate_vertical(const i32 x_min, const i32 x_max, const i32 y_min, const i32 y_max) {
+    if ((x_max - x_min) <= WALL_DISTANCE) {
+        return;
+    }
+
+    const i32 x = GetRandomValue(x_min + WALL_DISTANCE, x_max - WALL_DISTANCE);
+
+    verticals_push((Vertical){x, {y_min, y_max}});
+
+    generate_horizontal(x_min, x, y_min, y_max);
+    generate_horizontal(x, x_max, y_min, y_max);
+}
+
+void generate_horizontal(const i32 x_min, const i32 x_max, const i32 y_min, const i32 y_max) {
+    if ((y_max - (WALL_DISTANCE * 2)) <= y_min) {
+        return;
+    }
+
+    const i32 y = GetRandomValue(y_min + WALL_DISTANCE, y_max - WALL_DISTANCE);
+
+    horizontals_push((Horizontal){{x_min, x_max}, y});
+
+    generate_vertical(x_min, x_max, y_min, y);
+    generate_vertical(x_min, x_max, y, y_max);
+}
+
+static void splits_sort(void) {
+    for (u32 i = 0; i < LEN_SPLITS; ++i) {
+        const i32 split = SPLITS[i];
+
+        u32 j = i;
+        for (; (0 < j) && (split < SPLITS[j - 1]); --j) {
+            SPLITS[j] = SPLITS[j - 1];
+        }
+        SPLITS[j] = split;
+    }
+}
+
+static void split_verticals(void) {
+    for (u32 i = 0; i < LEN_VERTICALS; ++i) {
+        LEN_SPLITS = 0;
+
+        splits_push(VERTICALS[i].y[0]);
+
+        for (u32 j = 0; j < LEN_HORIZONTALS; ++j) {
+            if ((VERTICALS[i].x != HORIZONTALS[j].x[0]) && (VERTICALS[i].x != HORIZONTALS[j].x[1]))
+            {
+                continue;
+            }
+            splits_push(HORIZONTALS[j].y);
+        }
+
+        splits_sort();
+
+        splits_push(VERTICALS[i].y[1]);
+
+        const f32 x = (f32)VERTICALS[i].x;
+
+        for (u32 j = 1; j < LEN_SPLITS; ++j) {
+            const i32 y_min = SPLITS[j - 1];
+            const i32 y_max = SPLITS[j];
+            const i32 length = y_max - y_min;
+
+            if (length <= DOOR_GAP) {
+                rects_push((Rectangle){x, (f32)y_min, WALL_WIDTH, (f32)(length + WALL_WIDTH)});
+            } else {
+                const i32 y = GetRandomValue(y_min, y_max - DOOR_GAP);
+
+                rects_push((Rectangle){x, (f32)y_min, WALL_WIDTH, (f32)((y - y_min) + WALL_WIDTH)});
+                rects_push((Rectangle){x,
+                                       (f32)(y + DOOR_GAP),
+                                       WALL_WIDTH,
+                                       (f32)((y_max - (y + DOOR_GAP)) + WALL_WIDTH)});
+            }
+        }
+    }
+}
+
+static void split_horizontals(void) {
+    for (u32 i = 0; i < LEN_HORIZONTALS; ++i) {
+        LEN_SPLITS = 0;
+
+        splits_push(HORIZONTALS[i].x[0]);
+
+        for (u32 j = 0; j < LEN_VERTICALS; ++j) {
+            if ((HORIZONTALS[i].y != VERTICALS[j].y[0]) && (HORIZONTALS[i].y != VERTICALS[j].y[1]))
+            {
+                continue;
+            }
+            splits_push(VERTICALS[j].x);
+        }
+
+        splits_push(HORIZONTALS[i].x[1]);
+
+        splits_sort();
+
+        const f32 y = (f32)HORIZONTALS[i].y;
+
+        for (u32 j = 1; j < LEN_SPLITS; ++j) {
+            const i32 x_min = SPLITS[j - 1];
+            const i32 x_max = SPLITS[j];
+            const i32 length = x_max - x_min;
+
+            if (length < DOOR_GAP) {
+                rects_push((Rectangle){(f32)x_min, y, (f32)(length + WALL_WIDTH), WALL_WIDTH});
+            } else {
+                const i32 x = GetRandomValue(x_min, x_max - DOOR_GAP);
+
+                rects_push((Rectangle){(f32)x_min, y, (f32)((x - x_min) + WALL_WIDTH), WALL_WIDTH});
+                rects_push((Rectangle){(f32)(x + DOOR_GAP),
+                                       y,
+                                       (f32)((x_max - (x + DOOR_GAP)) + WALL_WIDTH),
+                                       WALL_WIDTH});
+            }
+        }
+    }
 }
 
 static Vector2 rotate(const Vector2 from, const Vector2 to, const f32 radians) {
@@ -120,7 +284,7 @@ static void rays_push_if_fov(Rays* rays, const Vector2 from, const Vector2 to, c
     }
 }
 
-static void update_position(Vector2* speed, Vector2* position, f32* direction) {
+static void update_inputs(Vector2* speed, Vector2* position, f32* direction) {
     Vector2 move = {0};
     bool    flag = false;
 
@@ -183,6 +347,7 @@ static void update_rays(const Vector2 position, const f32 direction, Rays* rays,
                              from,
                              to,
                              extend(from, rotate(from, points[j], EPSILON), SCREEN_X * SCREEN_Y));
+            rays_push_if_fov(rays, from, to, points[j]);
             rays_push_if_fov(rays,
                              from,
                              to,
@@ -237,7 +402,7 @@ static void update_rays(const Vector2 position, const f32 direction, Rays* rays,
 static void draw(const Vector2 position, const f32 direction, const Rays rays, const u32 steps) {
     BeginDrawing();
 
-    ClearBackground((Color){0x1A, 0x24, 0x33, 0xFF});
+    ClearBackground((Color){0x40, 0x40, 0xB0, 0xFF});
 
     DrawRectanglePro((Rectangle){position.x, position.y, PLAYER_X, PLAYER_Y},
                      (Vector2){PLAYER_X / 2.0f, PLAYER_Y / 2.0f},
@@ -245,13 +410,17 @@ static void draw(const Vector2 position, const f32 direction, const Rays rays, c
                      ORANGE);
 
     for (u32 i = 0; i < LEN_RECTS; ++i) {
-        DrawRectangleRec(RECTS[i], LIGHTGRAY);
+        DrawRectangleRec(RECTS[i], (Color){LIGHTGRAY.r, LIGHTGRAY.g, LIGHTGRAY.b, 0x80});
     }
 
     DrawTriangleFan(rays.buffer, (i32)rays.len, (Color){0xFF, 0xFF, 0xFF, 0x40});
 
     DrawFPS(FPS_X, FPS_Y);
-    DrawText(TextFormat("%u rays.len\n%u steps\n%.2f direction", rays.len, steps, (f64)direction),
+    DrawText(TextFormat("%u LEN_RECTS\n%u rays.len\n%u steps\n%.2f direction",
+                        LEN_RECTS,
+                        rays.len,
+                        steps,
+                        (f64)direction),
              10,
              40,
              20,
@@ -271,9 +440,14 @@ i32 main(void) {
 
     Rays rays = rays_new();
 
+    generate_vertical(0, SCREEN_X - 1, 0, SCREEN_Y - 1);
+
+    split_verticals();
+    split_horizontals();
+
     while (!WindowShouldClose()) {
         f32 direction = 0.0f;
-        update_position(&speed, &position, &direction);
+        update_inputs(&speed, &position, &direction);
 
         u32 steps = 0;
         update_rays(position, direction, &rays, &steps);
