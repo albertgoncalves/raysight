@@ -51,6 +51,10 @@ typedef struct {
 static Rectangle RECTS[CAP_RECTS];
 static u32       LEN_RECTS = 0;
 
+#define CAP_SUBSET (1 << 8)
+static Rectangle SUBSET[CAP_SUBSET];
+static u32       LEN_SUBSET = 0;
+
 #define CAP_HORIZONTALS (1 << 8)
 static Horizontal HORIZONTALS[CAP_HORIZONTALS];
 static u32        LEN_HORIZONTALS = 0;
@@ -63,17 +67,28 @@ static u32      LEN_VERTICALS = 0;
 static i32 SPLITS[CAP_SPLITS];
 static u32 LEN_SPLITS = 0;
 
-static void rects_push(const Rectangle rectangle) {
+static void rects_push(const Rectangle rect) {
+    assert((0 < rect.width) && (0 < rect.height));
+
     assert(LEN_RECTS < CAP_RECTS);
-    RECTS[LEN_RECTS++] = rectangle;
+    RECTS[LEN_RECTS++] = rect;
+}
+
+static void subset_push(const Rectangle rect) {
+    assert(LEN_SUBSET < CAP_SUBSET);
+    SUBSET[LEN_SUBSET++] = rect;
 }
 
 static void horizontals_push(const Horizontal horizontal) {
+    assert(horizontal.x[0] < horizontal.x[1]);
+
     assert(LEN_HORIZONTALS < CAP_HORIZONTALS);
     HORIZONTALS[LEN_HORIZONTALS++] = horizontal;
 }
 
 static void verticals_push(const Vertical vertical) {
+    assert(vertical.y[0] < vertical.y[1]);
+
     assert(LEN_VERTICALS < CAP_VERTICALS);
     VERTICALS[LEN_VERTICALS++] = vertical;
 }
@@ -153,9 +168,9 @@ static void split_verticals(void) {
             splits_push(HORIZONTALS[j].y);
         }
 
-        splits_sort();
-
         splits_push(VERTICALS[i].y[1]);
+
+        splits_sort();
 
         const f32 x = (f32)VERTICALS[i].x;
 
@@ -244,7 +259,7 @@ static f32 polar_angle(const Vector2 a, const Vector2 b, const Vector2 c) {
     return atan2f(c.y - a.y, c.x - a.x) - atan2f(b.y - a.y, b.x - a.x);
 }
 
-static void intersect(const Vector2 a[2], const Vector2 b[2], Vector2* point) {
+static void intersects_at(const Vector2 a[2], const Vector2 b[2], Vector2* point) {
     const Vector2 deltas[3] = {
         {a[0].x - a[1].x, a[0].y - a[1].y},
         {a[0].x - b[0].x, a[0].y - b[0].y},
@@ -259,7 +274,7 @@ static void intersect(const Vector2 a[2], const Vector2 b[2], Vector2* point) {
     const f32 t = ((deltas[1].x * deltas[2].y) - (deltas[1].y * deltas[2].x)) / denominator;
     const f32 u = -((deltas[0].x * deltas[1].y) - (deltas[0].y * deltas[1].x)) / denominator;
 
-    if ((t < 0.0f) || (1.0f < t) || (u < 0.0f) || (1.0f < u)) {
+    if ((t < 0.0f) | (1.0f < t) | (u < 0.0f) | (1.0f < u)) {
         return;
     }
 
@@ -277,11 +292,9 @@ static f32 center(f32 radians) {
     return radians;
 }
 
-static void rays_push_if_fov(Rays* rays, const Vector2 from, const Vector2 to, const Vector2 ray) {
+static bool within_fov(const Vector2 from, const Vector2 to, const Vector2 ray) {
     const f32 radians = center(polar_angle(from, ray, to));
-    if (((-FOV) < radians) && (radians < FOV)) {
-        rays_push(rays, ray);
-    }
+    return ((-FOV) < radians) && (radians < FOV);
 }
 
 static void update_inputs(Vector2* speed, Vector2* position, f32* direction) {
@@ -323,18 +336,51 @@ static void update_inputs(Vector2* speed, Vector2* position, f32* direction) {
                              (Vector2){position->x + (SCREEN_X * 2.0f), position->y});
 }
 
+static Rectangle triangle_to_rect(const Vector2 points[3]) {
+    Vector2 min = points[0];
+    Vector2 max = points[0];
+
+    for (u32 i = 1; i < 3; ++i) {
+        min.x = points[i].x < min.x ? points[i].x : min.x;
+        min.y = points[i].y < min.y ? points[i].y : min.y;
+        max.x = max.x < points[i].x ? points[i].x : max.x;
+        max.y = max.y < points[i].y ? points[i].y : max.y;
+    }
+
+    return (Rectangle){min.x, min.y, max.x - min.x, max.y - min.y};
+}
+
+static bool no_overlap(Rectangle a, Rectangle b) {
+    return ((a.x + a.width) < b.x) | ((b.x + b.width) < a.x) | ((a.y + a.height) < b.y) |
+           ((b.y + b.height) < a.y);
+}
+
 static void update_rays(const Vector2 position, const f32 direction, Rays* rays, u32* steps) {
-    rays->len = 0;
+    const f32 length = sqrtf((SCREEN_X * SCREEN_X) + (SCREEN_Y * SCREEN_Y));
 
     const Vector2 from =
         rotate(position, (Vector2){position.x + (PLAYER_X * 0.75f), position.y}, direction);
-    const Vector2 to =
-        rotate(position, (Vector2){position.x + (SCREEN_X * 2.0f), position.y}, direction);
+    const Vector2 to = rotate(position, (Vector2){position.x + length, position.y}, direction);
+
+    const Vector2 right = rotate(from, to, -FOV);
+    const Vector2 left = rotate(from, to, FOV);
+
+    const Rectangle bounds = triangle_to_rect((Vector2[3]){from, left, right});
+
+    rays->len = 0;
 
     rays_push(rays, from);
-    rays_push(rays, rotate(from, to, -FOV));
+    rays_push(rays, right);
+
+    LEN_SUBSET = 0;
 
     for (u32 i = 0; i < LEN_RECTS; ++i) {
+        if (no_overlap(bounds, RECTS[i])) {
+            continue;
+        }
+
+        subset_push(RECTS[i]);
+
         const Vector2 points[4] = {
             {RECTS[i].x, RECTS[i].y},
             {RECTS[i].x + RECTS[i].width, RECTS[i].y},
@@ -343,17 +389,24 @@ static void update_rays(const Vector2 position, const f32 direction, Rays* rays,
         };
 
         for (u32 j = 0; j < 4; ++j) {
-            rays_push_if_fov(rays,
-                             from,
-                             to,
-                             extend(from, rotate(from, points[j], EPSILON), SCREEN_X * SCREEN_Y));
-            rays_push_if_fov(rays, from, to, points[j]);
-            rays_push_if_fov(rays,
-                             from,
-                             to,
-                             extend(from, rotate(from, points[j], -EPSILON), SCREEN_X * SCREEN_Y));
-
-            *steps += 2;
+            if (within_fov(from, to, points[j])) {
+                rays_push(rays, points[j]);
+                {
+                    const Vector2 ray = extend(from, rotate(from, points[j], -EPSILON), length);
+                    if (within_fov(from, to, ray)) {
+                        rays_push(rays, ray);
+                    }
+                }
+                {
+                    const Vector2 ray = extend(from, rotate(from, points[j], EPSILON), length);
+                    if (within_fov(from, to, ray)) {
+                        rays_push(rays, ray);
+                    }
+                }
+                *steps += 3;
+            } else {
+                *steps += 1;
+            }
         }
     }
 
@@ -364,35 +417,54 @@ static void update_rays(const Vector2 position, const f32 direction, Rays* rays,
         u32 j = i;
         for (; (1 < j) && (radians < center(polar_angle(from, rays->buffer[j - 1], to))); --j) {
             rays->buffer[j] = rays->buffer[j - 1];
-
             *steps += 1;
         }
         rays->buffer[j] = ray;
     }
 
-    rays_push(rays, rotate(from, to, FOV));
+    rays_push(rays, left);
 
-    for (u32 i = 0; i < LEN_RECTS; ++i) {
+    for (u32 i = 0; i < LEN_SUBSET; ++i) {
         const Vector2 points[4] = {
-            {RECTS[i].x, RECTS[i].y},
-            {RECTS[i].x + RECTS[i].width, RECTS[i].y},
-            {RECTS[i].x + RECTS[i].width, RECTS[i].y + RECTS[i].height},
-            {RECTS[i].x, RECTS[i].y + RECTS[i].height},
+            {SUBSET[i].x, SUBSET[i].y},
+            {SUBSET[i].x + SUBSET[i].width, SUBSET[i].y},
+            {SUBSET[i].x + SUBSET[i].width, SUBSET[i].y + SUBSET[i].height},
+            {SUBSET[i].x, SUBSET[i].y + SUBSET[i].height},
         };
 
+        f32 min = center(polar_angle(from, points[0], to));
+        f32 max = min;
+
+        for (u32 j = 1; j < 4; ++j) {
+            const f32 candidate = center(polar_angle(from, points[j], to));
+            min = candidate < min ? candidate : min;
+            max = max < candidate ? candidate : max;
+
+            *steps += 1;
+        }
+
         for (u32 j = 1; j < rays->len; ++j) {
-            intersect((Vector2[2]){from, rays->buffer[j]},
-                      (Vector2[2]){points[0], points[1]},
-                      &rays->buffer[j]);
-            intersect((Vector2[2]){from, rays->buffer[j]},
-                      (Vector2[2]){points[1], points[2]},
-                      &rays->buffer[j]);
-            intersect((Vector2[2]){from, rays->buffer[j]},
-                      (Vector2[2]){points[2], points[3]},
-                      &rays->buffer[j]);
-            intersect((Vector2[2]){from, rays->buffer[j]},
-                      (Vector2[2]){points[3], points[0]},
-                      &rays->buffer[j]);
+            const f32 radians = center(polar_angle(from, rays->buffer[j], to));
+
+            if (radians < min) {
+                continue;
+            }
+            if (max < radians) {
+                break;
+            }
+
+            intersects_at((Vector2[2]){from, rays->buffer[j]},
+                          (Vector2[2]){points[0], points[1]},
+                          &rays->buffer[j]);
+            intersects_at((Vector2[2]){from, rays->buffer[j]},
+                          (Vector2[2]){points[1], points[2]},
+                          &rays->buffer[j]);
+            intersects_at((Vector2[2]){from, rays->buffer[j]},
+                          (Vector2[2]){points[2], points[3]},
+                          &rays->buffer[j]);
+            intersects_at((Vector2[2]){from, rays->buffer[j]},
+                          (Vector2[2]){points[3], points[0]},
+                          &rays->buffer[j]);
 
             *steps += 4;
         }
