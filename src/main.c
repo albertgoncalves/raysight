@@ -51,19 +51,19 @@ typedef struct {
 static Rectangle RECTS[CAP_RECTS];
 static u32       LEN_RECTS = 0;
 
-#define CAP_SUBSET (1 << 8)
+#define CAP_SUBSET (1 << 7)
 static Rectangle SUBSET[CAP_SUBSET];
 static u32       LEN_SUBSET = 0;
 
-#define CAP_HORIZONTALS (1 << 8)
+#define CAP_HORIZONTALS (1 << 6)
 static Horizontal HORIZONTALS[CAP_HORIZONTALS];
 static u32        LEN_HORIZONTALS = 0;
 
-#define CAP_VERTICALS (1 << 8)
+#define CAP_VERTICALS (1 << 6)
 static Vertical VERTICALS[CAP_VERTICALS];
 static u32      LEN_VERTICALS = 0;
 
-#define CAP_SPLITS (1 << 8)
+#define CAP_SPLITS (1 << 6)
 static i32 SPLITS[CAP_SPLITS];
 static u32 LEN_SPLITS = 0;
 
@@ -445,8 +445,6 @@ static void update_rays(const Vector2 position, const f32 direction, Rays* rays,
             const f32 candidate = center(polar_angle(from, points[j], to));
             min = candidate < min ? candidate : min;
             max = max < candidate ? candidate : max;
-
-            *steps += 1;
         }
 
         for (u32 j = 1; j < rays->len; ++j) {
