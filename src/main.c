@@ -42,7 +42,7 @@ typedef struct {
 
 #define EPSILON 0.00001f
 
-#define WALL_DISTANCE 250
+#define WALL_DISTANCE 500
 #define WALL_WIDTH    10
 
 #define DOOR_GAP 150
@@ -121,7 +121,7 @@ static void generate_vertical(const i32 x_min, const i32 x_max, const i32 y_min,
         return;
     }
 
-    const i32 x = GetRandomValue(x_min + WALL_DISTANCE, x_max - WALL_DISTANCE);
+    const i32 x = GetRandomValue(x_min + (WALL_DISTANCE / 2), x_max - (WALL_DISTANCE / 2));
 
     verticals_push((Vertical){x, {y_min, y_max}});
 
@@ -130,11 +130,11 @@ static void generate_vertical(const i32 x_min, const i32 x_max, const i32 y_min,
 }
 
 void generate_horizontal(const i32 x_min, const i32 x_max, const i32 y_min, const i32 y_max) {
-    if ((y_max - (WALL_DISTANCE * 2)) <= y_min) {
+    if ((y_max - WALL_DISTANCE) <= y_min) {
         return;
     }
 
-    const i32 y = GetRandomValue(y_min + WALL_DISTANCE, y_max - WALL_DISTANCE);
+    const i32 y = GetRandomValue(y_min + (WALL_DISTANCE / 2), y_max - (WALL_DISTANCE / 2));
 
     horizontals_push((Horizontal){{x_min, x_max}, y});
 
@@ -182,13 +182,16 @@ static void split_verticals(void) {
             if (length <= DOOR_GAP) {
                 rects_push((Rectangle){x, (f32)y_min, WALL_WIDTH, (f32)(length + WALL_WIDTH)});
             } else {
-                const i32 y = GetRandomValue(y_min, y_max - DOOR_GAP);
+                const i32 y = GetRandomValue(y_min + (DOOR_GAP / 2), y_max - (DOOR_GAP / 2));
 
-                rects_push((Rectangle){x, (f32)y_min, WALL_WIDTH, (f32)((y - y_min) + WALL_WIDTH)});
                 rects_push((Rectangle){x,
-                                       (f32)(y + DOOR_GAP),
+                                       (f32)y_min,
                                        WALL_WIDTH,
-                                       (f32)((y_max - (y + DOOR_GAP)) + WALL_WIDTH)});
+                                       (f32)(((y - (DOOR_GAP / 2)) - y_min) + WALL_WIDTH)});
+                rects_push((Rectangle){x,
+                                       (f32)(y + (DOOR_GAP / 2)),
+                                       WALL_WIDTH,
+                                       (f32)((y_max - (y + (DOOR_GAP / 2))) + WALL_WIDTH)});
             }
         }
     }
@@ -219,15 +222,18 @@ static void split_horizontals(void) {
             const i32 x_max = SPLITS[j];
             const i32 length = x_max - x_min;
 
-            if (length < DOOR_GAP) {
+            if (length <= DOOR_GAP) {
                 rects_push((Rectangle){(f32)x_min, y, (f32)(length + WALL_WIDTH), WALL_WIDTH});
             } else {
-                const i32 x = GetRandomValue(x_min, x_max - DOOR_GAP);
+                const i32 x = GetRandomValue(x_min + (DOOR_GAP / 2), x_max - (DOOR_GAP / 2));
 
-                rects_push((Rectangle){(f32)x_min, y, (f32)((x - x_min) + WALL_WIDTH), WALL_WIDTH});
-                rects_push((Rectangle){(f32)(x + DOOR_GAP),
+                rects_push((Rectangle){(f32)x_min,
                                        y,
-                                       (f32)((x_max - (x + DOOR_GAP)) + WALL_WIDTH),
+                                       (f32)((((x - (DOOR_GAP / 2))) - x_min) + WALL_WIDTH),
+                                       WALL_WIDTH});
+                rects_push((Rectangle){(f32)(x + (DOOR_GAP / 2)),
+                                       y,
+                                       (f32)((x_max - (x + (DOOR_GAP / 2))) + WALL_WIDTH),
                                        WALL_WIDTH});
             }
         }
