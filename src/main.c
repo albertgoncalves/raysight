@@ -161,6 +161,9 @@ static void split_verticals(void) {
         splits_push(VERTICALS[i].y[0]);
 
         for (u32 j = 0; j < LEN_HORIZONTALS; ++j) {
+            if ((HORIZONTALS[j].y < VERTICALS[i].y[0]) || (VERTICALS[i].y[1] < HORIZONTALS[j].y)) {
+                continue;
+            }
             if ((VERTICALS[i].x != HORIZONTALS[j].x[0]) && (VERTICALS[i].x != HORIZONTALS[j].x[1]))
             {
                 continue;
@@ -204,6 +207,9 @@ static void split_horizontals(void) {
         splits_push(HORIZONTALS[i].x[0]);
 
         for (u32 j = 0; j < LEN_VERTICALS; ++j) {
+            if ((VERTICALS[j].x < HORIZONTALS[i].x[0]) || (HORIZONTALS[i].x[1] < VERTICALS[j].x)) {
+                continue;
+            }
             if ((HORIZONTALS[i].y != VERTICALS[j].y[0]) && (HORIZONTALS[i].y != VERTICALS[j].y[1]))
             {
                 continue;
