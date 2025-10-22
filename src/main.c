@@ -346,7 +346,7 @@ static bool within_fov(const Vector2 from, const Vector2 to, const Vector2 ray) 
     return ((-FOV) < radians) && (radians < FOV);
 }
 
-static void update_inputs(Vector2* speed, Vector2* position, f32* direction) {
+static f32 update_inputs(Vector2* speed, Vector2* position) {
     Vector2 move = {0};
     bool    flag = false;
 
@@ -380,9 +380,9 @@ static void update_inputs(Vector2* speed, Vector2* position, f32* direction) {
     position->x += speed->x;
     position->y += speed->y;
 
-    *direction = polar_angle(*position,
-                             GetMousePosition(),
-                             (Vector2){position->x + (SCREEN_X * 2.0f), position->y});
+    return polar_angle(*position,
+                       GetMousePosition(),
+                       (Vector2){position->x + (SCREEN_X * 2.0f), position->y});
 }
 
 static Rectangle triangle_to_rect(const Vector2 points[3]) {
@@ -404,7 +404,9 @@ static bool no_overlap(Rectangle a, Rectangle b) {
            ((b.y + b.height) < a.y);
 }
 
-static void update_rays(const Vector2 position, const f32 direction, Rays* rays, u32* steps) {
+static u32 update_rays(const Vector2 position, const f32 direction, Rays* rays) {
+    u32 steps = 0;
+
     const f32 length = sqrtf((SCREEN_X * SCREEN_X) + (SCREEN_Y * SCREEN_Y));
 
     const Vector2 from =
@@ -452,9 +454,9 @@ static void update_rays(const Vector2 position, const f32 direction, Rays* rays,
                         rays_push(rays, ray);
                     }
                 }
-                *steps += 3;
+                steps += 3;
             } else {
-                *steps += 1;
+                steps += 1;
             }
         }
     }
@@ -466,7 +468,7 @@ static void update_rays(const Vector2 position, const f32 direction, Rays* rays,
         u32 j = i;
         for (; (1 < j) && (radians < center(polar_angle(from, rays->buffer[j - 1], to))); --j) {
             rays->buffer[j] = rays->buffer[j - 1];
-            *steps += 1;
+            steps += 1;
         }
         rays->buffer[j] = ray;
     }
@@ -513,9 +515,11 @@ static void update_rays(const Vector2 position, const f32 direction, Rays* rays,
                           (Vector2[2]){points[3], points[0]},
                           &rays->buffer[j]);
 
-            *steps += 4;
+            steps += 4;
         }
     }
+
+    return steps;
 }
 
 static void draw(const Vector2 position, const f32 direction, const Rays rays, const u32 steps) {
@@ -592,11 +596,8 @@ i32 main(void) {
     split_horizontals();
 
     while (!WindowShouldClose()) {
-        f32 direction = 0.0f;
-        update_inputs(&speed, &position, &direction);
-
-        u32 steps = 0;
-        update_rays(position, direction, &rays, &steps);
+        const f32 direction = update_inputs(&speed, &position);
+        const u32 steps = update_rays(position, direction, &rays);
         draw(position, direction, rays, steps);
     }
 
