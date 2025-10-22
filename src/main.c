@@ -86,9 +86,12 @@ static u32  LEN_NODES = 0;
 static Vector2i DOORS[CAP_DOORS];
 static u32      LEN_DOORS = 0;
 
+#define CAP_LINES (1 << 5)
+static Line LINES[CAP_LINES];
+static u32  LEN_LINES = 0;
+
 static void rects_push(const Rectangle rect) {
     assert((0 < rect.width) && (0 < rect.height));
-
     assert(LEN_RECTS < CAP_RECTS);
     RECTS[LEN_RECTS++] = rect;
 }
@@ -100,14 +103,12 @@ static void subset_push(const Rectangle rect) {
 
 static void horizontals_push(const Horizontal horizontal) {
     assert(horizontal.x[0] < horizontal.x[1]);
-
     assert(LEN_HORIZONTALS < CAP_HORIZONTALS);
     HORIZONTALS[LEN_HORIZONTALS++] = horizontal;
 }
 
 static void verticals_push(const Vertical vertical) {
     assert(vertical.y[0] < vertical.y[1]);
-
     assert(LEN_VERTICALS < CAP_VERTICALS);
     VERTICALS[LEN_VERTICALS++] = vertical;
 }
@@ -127,6 +128,11 @@ static void nodes_push(const Line node) {
 static void doors_push(const Vector2i door) {
     assert(LEN_DOORS < CAP_DOORS);
     DOORS[LEN_DOORS++] = door;
+}
+
+static void lines_push(const Line line) {
+    assert(LEN_LINES < CAP_LINES);
+    LINES[LEN_LINES++] = line;
 }
 
 static Rays rays_new(void) {
@@ -536,27 +542,22 @@ static void draw(const Vector2 position, const f32 direction, const Rays rays, c
         DrawRectangleRec(RECTS[i], (Color){LIGHTGRAY.r, LIGHTGRAY.g, LIGHTGRAY.b, 0x80});
     }
 
+    for (u32 i = 0; i < LEN_LINES; ++i) {
+        DrawLineV((Vector2){(f32)LINES[i].points[0].x, (f32)LINES[i].points[0].y},
+                  (Vector2){(f32)LINES[i].points[1].x, (f32)LINES[i].points[1].y},
+                  (Color){0xFF, 0xFF, 0xFF, 0x40});
+    }
+
     for (u32 i = 0; i < LEN_NODES; ++i) {
-        const f32 x =
-            (f32)(NODES[i].points[0].x + ((NODES[i].points[1].x - NODES[i].points[0].x) / 2) +
-                  (NODE_RADIUS / 2));
-        const f32 y =
-            (f32)(NODES[i].points[0].y + ((NODES[i].points[1].y - NODES[i].points[0].y) / 2) +
-                  (NODE_RADIUS / 2));
-
-        DrawCircleV((Vector2){x, y}, NODE_RADIUS, SKYBLUE);
-
-        for (u32 j = 0; j < LEN_DOORS; ++j) {
-            if ((((DOORS[j].x == NODES[i].points[0].x) || (DOORS[j].x == NODES[i].points[1].x)) &&
-                 (NODES[i].points[0].y <= DOORS[j].y) && (DOORS[j].y <= NODES[i].points[1].y)) ||
-                (((DOORS[j].y == NODES[i].points[0].y) || (DOORS[j].y == NODES[i].points[1].y)) &&
-                 (NODES[i].points[0].x <= DOORS[j].x) && (DOORS[j].x <= NODES[i].points[1].x)))
-            {
-                DrawLineV((Vector2){x, y},
-                          (Vector2){(f32)DOORS[j].x, (f32)DOORS[j].y},
-                          (Color){0xFF, 0xFF, 0xFF, 0x40});
-            }
-        }
+        DrawCircleV(
+            (Vector2){
+                (f32)(NODES[i].points[0].x + ((NODES[i].points[1].x - NODES[i].points[0].x) / 2) +
+                      (NODE_RADIUS / 2)),
+                (f32)(NODES[i].points[0].y + ((NODES[i].points[1].y - NODES[i].points[0].y) / 2) +
+                      (NODE_RADIUS / 2)),
+            },
+            NODE_RADIUS,
+            SKYBLUE);
     }
 
     for (u32 i = 0; i < LEN_DOORS; ++i) {
@@ -594,6 +595,23 @@ i32 main(void) {
 
     split_verticals();
     split_horizontals();
+
+    for (u32 i = 0; i < LEN_NODES; ++i) {
+        const i32 x = NODES[i].points[0].x + ((NODES[i].points[1].x - NODES[i].points[0].x) / 2) +
+                      (NODE_RADIUS / 2);
+        const i32 y = NODES[i].points[0].y + ((NODES[i].points[1].y - NODES[i].points[0].y) / 2) +
+                      (NODE_RADIUS / 2);
+
+        for (u32 j = 0; j < LEN_DOORS; ++j) {
+            if ((((DOORS[j].x == NODES[i].points[0].x) || (DOORS[j].x == NODES[i].points[1].x)) &&
+                 (NODES[i].points[0].y <= DOORS[j].y) && (DOORS[j].y <= NODES[i].points[1].y)) ||
+                (((DOORS[j].y == NODES[i].points[0].y) || (DOORS[j].y == NODES[i].points[1].y)) &&
+                 (NODES[i].points[0].x <= DOORS[j].x) && (DOORS[j].x <= NODES[i].points[1].x)))
+            {
+                lines_push((Line){{{x, y}, {DOORS[j].x, DOORS[j].y}}});
+            }
+        }
+    }
 
     while (!WindowShouldClose()) {
         const f32 direction = update_inputs(&speed, &position);
