@@ -11,6 +11,10 @@ typedef float    f32;
 typedef double   f64;
 
 typedef struct {
+    i32 x, y;
+} Vector2i;
+
+typedef struct {
     u32      cap;
     u32      len;
     Vector2* buffer;
@@ -25,6 +29,10 @@ typedef struct {
     i32 x;
     i32 y[2];
 } Vertical;
+
+typedef struct {
+    Vector2i points[2];
+} Line;
 
 #define FPS_X 10
 #define FPS_Y FPS_X
@@ -47,6 +55,9 @@ typedef struct {
 
 #define DOOR_GAP 150
 
+#define NODE_RADIUS 10
+#define DOOR_RADIUS NODE_RADIUS
+
 #define CAP_RECTS (1 << 8)
 static Rectangle RECTS[CAP_RECTS];
 static u32       LEN_RECTS = 0;
@@ -66,6 +77,14 @@ static u32      LEN_VERTICALS = 0;
 #define CAP_SPLITS (1 << 6)
 static i32 SPLITS[CAP_SPLITS];
 static u32 LEN_SPLITS = 0;
+
+#define CAP_NODES (1 << 6)
+static Line NODES[CAP_NODES];
+static u32  LEN_NODES = 0;
+
+#define CAP_DOORS (1 << 5)
+static Vector2i DOORS[CAP_DOORS];
+static u32      LEN_DOORS = 0;
 
 static void rects_push(const Rectangle rect) {
     assert((0 < rect.width) && (0 < rect.height));
@@ -98,6 +117,18 @@ static void splits_push(const i32 split) {
     SPLITS[LEN_SPLITS++] = split;
 }
 
+static void nodes_push(const Line node) {
+    assert(LEN_NODES < CAP_NODES);
+    assert(node.points[0].x < node.points[1].x);
+    assert(node.points[0].y < node.points[1].y);
+    NODES[LEN_NODES++] = node;
+}
+
+static void doors_push(const Vector2i door) {
+    assert(LEN_DOORS < CAP_DOORS);
+    DOORS[LEN_DOORS++] = door;
+}
+
 static Rays rays_new(void) {
     const u32 cap = (1u << 5u);
     void*     buffer = calloc(cap, sizeof(Vector2));
@@ -118,6 +149,7 @@ static void generate_horizontal(const i32, const i32, const i32, const i32);
 
 static void generate_vertical(const i32 x_min, const i32 x_max, const i32 y_min, const i32 y_max) {
     if ((x_max - x_min) <= WALL_DISTANCE) {
+        nodes_push((Line){{{x_min, y_min}, {x_max, y_max}}});
         return;
     }
 
@@ -131,6 +163,7 @@ static void generate_vertical(const i32 x_min, const i32 x_max, const i32 y_min,
 
 void generate_horizontal(const i32 x_min, const i32 x_max, const i32 y_min, const i32 y_max) {
     if ((y_max - WALL_DISTANCE) <= y_min) {
+        nodes_push((Line){{{x_min, y_min}, {x_max, y_max}}});
         return;
     }
 
@@ -187,6 +220,8 @@ static void split_verticals(void) {
             } else {
                 const i32 y = GetRandomValue(y_min + (DOOR_GAP / 2), y_max - (DOOR_GAP / 2));
 
+                doors_push((Vector2i){x, y});
+
                 rects_push((Rectangle){(f32)x,
                                        (f32)y_min,
                                        WALL_WIDTH,
@@ -232,6 +267,8 @@ static void split_horizontals(void) {
                 rects_push((Rectangle){(f32)x_min, (f32)y, (f32)(length + WALL_WIDTH), WALL_WIDTH});
             } else {
                 const i32 x = GetRandomValue(x_min + (DOOR_GAP / 2), x_max - (DOOR_GAP / 2));
+
+                doors_push((Vector2i){x, y});
 
                 rects_push((Rectangle){(f32)x_min,
                                        (f32)y,
@@ -493,6 +530,33 @@ static void draw(const Vector2 position, const f32 direction, const Rays rays, c
 
     for (u32 i = 0; i < LEN_RECTS; ++i) {
         DrawRectangleRec(RECTS[i], (Color){LIGHTGRAY.r, LIGHTGRAY.g, LIGHTGRAY.b, 0x80});
+    }
+
+    for (u32 i = 0; i < LEN_NODES; ++i) {
+        const f32 x =
+            (f32)(NODES[i].points[0].x + ((NODES[i].points[1].x - NODES[i].points[0].x) / 2) +
+                  (NODE_RADIUS / 2));
+        const f32 y =
+            (f32)(NODES[i].points[0].y + ((NODES[i].points[1].y - NODES[i].points[0].y) / 2) +
+                  (NODE_RADIUS / 2));
+
+        DrawCircleV((Vector2){x, y}, NODE_RADIUS, SKYBLUE);
+
+        for (u32 j = 0; j < LEN_DOORS; ++j) {
+            if ((((DOORS[j].x == NODES[i].points[0].x) || (DOORS[j].x == NODES[i].points[1].x)) &&
+                 (NODES[i].points[0].y <= DOORS[j].y) && (DOORS[j].y <= NODES[i].points[1].y)) ||
+                (((DOORS[j].y == NODES[i].points[0].y) || (DOORS[j].y == NODES[i].points[1].y)) &&
+                 (NODES[i].points[0].x <= DOORS[j].x) && (DOORS[j].x <= NODES[i].points[1].x)))
+            {
+                DrawLineV((Vector2){x, y},
+                          (Vector2){(f32)DOORS[j].x, (f32)DOORS[j].y},
+                          (Color){0xFF, 0xFF, 0xFF, 0x40});
+            }
+        }
+    }
+
+    for (u32 i = 0; i < LEN_DOORS; ++i) {
+        DrawCircleV((Vector2){(f32)DOORS[i].x, (f32)DOORS[i].y}, DOOR_RADIUS, PINK);
     }
 
     DrawTriangleFan(rays.buffer, (i32)rays.len, (Color){0xFF, 0xFF, 0xFF, 0x40});
