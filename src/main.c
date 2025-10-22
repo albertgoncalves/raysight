@@ -175,7 +175,7 @@ static void split_verticals(void) {
 
         splits_sort();
 
-        const f32 x = (f32)VERTICALS[i].x;
+        const i32 x = VERTICALS[i].x;
 
         for (u32 j = 1; j < LEN_SPLITS; ++j) {
             const i32 y_min = SPLITS[j - 1];
@@ -183,15 +183,15 @@ static void split_verticals(void) {
             const i32 length = y_max - y_min;
 
             if (length <= DOOR_GAP) {
-                rects_push((Rectangle){x, (f32)y_min, WALL_WIDTH, (f32)(length + WALL_WIDTH)});
+                rects_push((Rectangle){(f32)x, (f32)y_min, WALL_WIDTH, (f32)(length + WALL_WIDTH)});
             } else {
                 const i32 y = GetRandomValue(y_min + (DOOR_GAP / 2), y_max - (DOOR_GAP / 2));
 
-                rects_push((Rectangle){x,
+                rects_push((Rectangle){(f32)x,
                                        (f32)y_min,
                                        WALL_WIDTH,
                                        (f32)(((y - (DOOR_GAP / 2)) - y_min) + WALL_WIDTH)});
-                rects_push((Rectangle){x,
+                rects_push((Rectangle){(f32)x,
                                        (f32)(y + (DOOR_GAP / 2)),
                                        WALL_WIDTH,
                                        (f32)((y_max - (y + (DOOR_GAP / 2))) + WALL_WIDTH)});
@@ -221,7 +221,7 @@ static void split_horizontals(void) {
 
         splits_sort();
 
-        const f32 y = (f32)HORIZONTALS[i].y;
+        const i32 y = HORIZONTALS[i].y;
 
         for (u32 j = 1; j < LEN_SPLITS; ++j) {
             const i32 x_min = SPLITS[j - 1];
@@ -229,16 +229,16 @@ static void split_horizontals(void) {
             const i32 length = x_max - x_min;
 
             if (length <= DOOR_GAP) {
-                rects_push((Rectangle){(f32)x_min, y, (f32)(length + WALL_WIDTH), WALL_WIDTH});
+                rects_push((Rectangle){(f32)x_min, (f32)y, (f32)(length + WALL_WIDTH), WALL_WIDTH});
             } else {
                 const i32 x = GetRandomValue(x_min + (DOOR_GAP / 2), x_max - (DOOR_GAP / 2));
 
                 rects_push((Rectangle){(f32)x_min,
-                                       y,
+                                       (f32)y,
                                        (f32)((((x - (DOOR_GAP / 2))) - x_min) + WALL_WIDTH),
                                        WALL_WIDTH});
                 rects_push((Rectangle){(f32)(x + (DOOR_GAP / 2)),
-                                       y,
+                                       (f32)y,
                                        (f32)((x_max - (x + (DOOR_GAP / 2))) + WALL_WIDTH),
                                        WALL_WIDTH});
             }
