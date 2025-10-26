@@ -58,6 +58,8 @@ typedef struct {
 #define NODE_RADIUS 10
 #define DOOR_RADIUS NODE_RADIUS
 
+static u32 NEAREST_DOOR;
+
 #define CAP_RECTS (1 << 8)
 static Rectangle RECTS[CAP_RECTS];
 static u32       LEN_RECTS = 0;
@@ -86,7 +88,7 @@ static u32  LEN_NODES = 0;
 static Vector2i DOORS[CAP_DOORS];
 static u32      LEN_DOORS = 0;
 
-#define CAP_LINES (1 << 5)
+#define CAP_LINES (1 << 6)
 static Line LINES[CAP_LINES];
 static u32  LEN_LINES = 0;
 
@@ -149,6 +151,11 @@ static void rays_push(Rays* rays, const Vector2 ray) {
     }
 
     rays->buffer[(rays->len)++] = ray;
+}
+
+static f32 distance(Vector2 a, Vector2 b) {
+    const Vector2 delta = {a.x - b.x, a.y - b.y};
+    return sqrtf((delta.x * delta.x) + (delta.y * delta.y));
 }
 
 static void generate_horizontal(const i32, const i32, const i32, const i32);
@@ -386,6 +393,19 @@ static f32 update_inputs(Vector2* speed, Vector2* position) {
     position->x += speed->x;
     position->y += speed->y;
 
+    {
+        assert(LEN_DOORS != 0);
+        NEAREST_DOOR = 0;
+        f32 min = distance(*position, (Vector2){(f32)DOORS[0].x, (f32)DOORS[0].y});
+        for (u32 i = 1; i < LEN_DOORS; ++i) {
+            const f32 candidate = distance(*position, (Vector2){(f32)DOORS[i].x, (f32)DOORS[i].y});
+            if (candidate < min) {
+                NEAREST_DOOR = i;
+                min = candidate;
+            }
+        }
+    }
+
     return polar_angle(*position,
                        GetMousePosition(),
                        (Vector2){position->x + (SCREEN_X * 2.0f), position->y});
@@ -561,7 +581,8 @@ static void draw(const Vector2 position, const f32 direction, const Rays rays, c
     }
 
     for (u32 i = 0; i < LEN_DOORS; ++i) {
-        DrawCircleV((Vector2){(f32)DOORS[i].x, (f32)DOORS[i].y}, DOOR_RADIUS, PINK);
+        const Color color = i == NEAREST_DOOR ? PINK : RAYWHITE;
+        DrawCircleV((Vector2){(f32)DOORS[i].x, (f32)DOORS[i].y}, DOOR_RADIUS, color);
     }
 
     DrawTriangleFan(rays.buffer, (i32)rays.len, (Color){0xFF, 0xFF, 0xFF, 0x40});
@@ -596,6 +617,8 @@ i32 main(void) {
     split_verticals();
     split_horizontals();
 
+    bool* graph = (bool*)calloc(LEN_DOORS * LEN_NODES, sizeof(bool));
+
     for (u32 i = 0; i < LEN_NODES; ++i) {
         const i32 x = NODES[i].points[0].x + ((NODES[i].points[1].x - NODES[i].points[0].x) / 2) +
                       (NODE_RADIUS / 2);
@@ -609,6 +632,7 @@ i32 main(void) {
                  (NODES[i].points[0].x <= DOORS[j].x) && (DOORS[j].x <= NODES[i].points[1].x)))
             {
                 lines_push((Line){{{x, y}, {DOORS[j].x, DOORS[j].y}}});
+                graph[(LEN_DOORS * i) + j] = true;
             }
         }
     }
@@ -622,6 +646,7 @@ i32 main(void) {
     CloseWindow();
 
     free(rays.buffer);
+    free(graph);
 
     return 0;
 }
